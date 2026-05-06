@@ -1,0 +1,45 @@
+name: anomaly-detection
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.9
+  - pip
+
+  # Core framework
+  - fastapi
+  - uvicorn
+  - pydantic
+  - pydantic-settings
+  - jinja2
+
+  # Data / ML
+  - pandas
+  - numpy
+  - scikit-learn
+  - pyarrow        # snowflake-connector-python[pandas] extra
+
+  # Database
+  - snowflake-connector-python
+  - snowflake-sqlalchemy
+  - sqlalchemy
+
+  # Utilities
+  - loguru
+  - python-dotenv
+  - cryptography
+  - pyyaml
+
+  # Azure
+  - azure-identity
+  - azure-keyvault-secrets
+
+  # Uvicorn standard extras (not included in base conda package)
+  - websockets
+  - httptools
+  - uvloop
+  - watchfiles
+
+  # Editable install of your local package (reads pyproject.toml)
+  - pip:
+      - -e .
