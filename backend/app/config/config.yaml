@@ -1,0 +1,51 @@
+# ==============================================================================
+# config.yaml — Anomaly Detection Pipeline Configuration
+# ==============================================================================
+
+# ---- Azure Key Vault ----
+key_vault:
+  name: "your-keyvault-name"
+  managed_identity_client_id: "your-managed-identity-client-id"
+
+# ---- Snowflake Connection ----
+snowflake:
+  database: "database-name"
+  warehouse: "your-warehouse"
+  schema: "schema-name"
+  role: ""            # loaded from Key Vault if blank
+
+# ---- Paths (relative to project root) ----
+paths:
+  queries_dir: "queries"
+  artifacts_dir: "artifacts"
+
+# ---- SQL Query File & Key ----
+# The .sql file holds one base query marked with -- @query base
+query_file: "filename.sql"
+query_key: "base"
+
+# ---- Detection Levels ----
+# Each level defines which columns to group by when aggregating the base data.
+detection_levels:
+  by_client:
+    group_cols: ["CLIENT_NAME"]
+
+  by_category:
+    group_cols: ["ISSUE_CATEGORY"]
+
+  by_subcategory:
+    group_cols: ["ISSUE_SUBCATEGORY"]
+
+  by_client_category:
+    group_cols: ["CLIENT_NAME", "ISSUE_CATEGORY"]
+
+# ---- Anomaly Detection Parameters ----
+detection_params:
+  rolling_window: 30
+  zscore_threshold: 3.0
+  iqr_multiplier: 1.5
+  std_band_multiplier: 2.5
+  min_data_points: 30
+  consensus_threshold: 2
+  recent_days: 30
+  plot_top_n: 5

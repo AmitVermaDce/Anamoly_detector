@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  anomaly-detection:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: anomaly-detection-app
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+    networks:
+      - anomaly-network
+
+networks:
+  anomaly-network:
+    driver: bridge
