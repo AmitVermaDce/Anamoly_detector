@@ -1,98 +1,139 @@
-# Anomaly Detection Application
+# Anomaly Detection API
 
-A production-grade full-stack application for detecting anomalies in Snowflake data using multiple algorithms, with an interactive React dashboard.
+A production-grade Python API for detecting anomalies in Snowflake data using multiple algorithms, with a self-contained HTML dashboard served directly from FastAPI.
 
 ## Architecture
 
 ```
 anomaly-detection-app/
-├── backend/          FastAPI + Snowflake + scikit-learn + Azure Key Vault
-│   ├── app/
-│   │   ├── core/     Config, logging, exceptions
-│   │   ├── db/       Snowflake client, SQL query loader, Azure CredentialManager
-│   │   ├── models/   Pydantic schemas + detector implementations
-│   │   ├── services/ Data service + anomaly detection orchestration
-│   │   ├── api/v1/   API routes (health, anomaly detection)
-│   │   ├── sql/      All queries in a single .sql file
-│   │   └── config/   Azure + Snowflake config (config.yaml)
-│   └── tests/        Pytest suite
-├── frontend/         React 18 + Vite + TypeScript + TailwindCSS
-│   ├── src/
-│   │   ├── components/  UI, layout, charts
-│   │   ├── pages/       Dashboard, AnomalyDetails
-│   │   ├── services/    Class-based API client
-│   │   ├── store/       Zustand state management
-│   │   └── hooks/       React Query + custom hooks
-│   └── Dockerfile
+├── src/
+│   └── anomaly_detection/
+│       ├── app.py              FastAPI application + lifespan
+│       ├── state.py            Module-level singletons (config, snowflake_client)
+│       ├── config.py           Pydantic Settings (env) + YAML Config
+│       ├── exceptions.py       Custom exception hierarchy
+│       ├── logger.py             One-time loguru configuration
+│       ├── api/
+│       │   ├── router.py         API v1 router aggregation
+│       │   ├── schemas.py        Pydantic request/response models
+│       │   └── endpoints/
+│       │       ├── health.py
+│       │       └── anomaly.py
+│       ├── database/
+│       │   ├── snowflake.py      Snowflake connection manager
+│       │   ├── queries.py        Named SQL query loader
+│       │   └── credentials.py    Azure Key Vault integration
+│       ├── detection/
+│       │   ├── base.py           Abstract BaseDetector
+│       │   ├── factory.py        Registry + create_detector()
+│       │   ├── isolation_forest.py
+│       │   ├── zscore.py
+│       │   └── dbscan.py
+│       ├── services/
+│       │   ├── detection.py      Orchestration service
+│       │   └── data.py           Query + fetch service
+│       ├── templates/
+│       │   └── index.html        Vanilla JS dashboard
+│       └── config/
+│           └── config.yaml       Detection levels + paths
+├── queries/
+│   └── filename.sql            Named SQL queries (-- @query markers)
+├── pyproject.toml
+├── Dockerfile
 ├── docker-compose.yml
-├── start.sh            One-command launcher
-└── README.md
+├── start.sh                    One-command launcher
+└── .env.example
 ```
 
 ## Prerequisites
 
-- Python 3.11+
-- Node.js 20+
-- Snowflake account
-- Docker & Docker Compose (optional)
+- Python 3.9+
+- Snowflake account (for data source)
+- Azure Key Vault (optional — falls back to .env)
 
-## Quick Start (Single Command)
+## Quick Start
 
 ```bash
 ./start.sh
 ```
 
-This builds the frontend, installs backend dependencies, and starts the unified server on `http://localhost:8000`.
-
-### What `./start.sh` Does
-1. Validates Python 3.11+ and Node.js 20+
-2. Creates `backend/.env` from `.env.example` if missing
-3. Installs frontend dependencies (`npm install`)
-4. Builds the React app into `frontend/dist/`
-5. Creates Python virtual environment (`.venv`) if missing
-6. Installs backend dependencies (`pip install -e ".[dev]"`)
-7. Starts **one** uvicorn server on port `8000`
-
-### After It Runs
-
-| URL | What |
-|-----|------|
-| `http://localhost:8000/` | **Dashboard** (React SPA) |
+| URL | Description |
+|-----|-------------|
+| `http://localhost:8000/` | Dashboard |
 | `http://localhost:8000/docs` | Swagger API docs |
-| `http://localhost:8000/api/v1` | API base path |
+| `http://localhost:8000/api/v1/health` | Health check |
 
-## Azure Key Vault Integration
+## Configuration
 
-The app supports fetching Snowflake credentials from Azure Key Vault using Managed Identity.
+### Environment Variables (`.env`)
 
-### Config File
+```bash
+# Required for Snowflake
+SNOWFLAKE_ACCOUNT=your-account
+SNOWFLAKE_USER=your-user
+SNOWFLAKE_PASSWORD=your-password
+SNOWFLAKE_DATABASE=your-database
+SNOWFLAKE_SCHEMA=your-schema
+SNOWFLAKE_WAREHOUSE=your-warehouse
+SNOWFLAKE_ROLE=your-role
 
-Edit `backend/app/config/config.yaml`:
+# Optional: key-pair auth
+SNOWFLAKE_AUTHENTICATOR=keypair
+SNOWFLAKE_PRIVATE_KEY_PATH=/path/to/key.pem
+SNOWFLAKE_PRIVATE_KEY_PASSPHRASE=your-passphrase
+```
+
+### `config.yaml`
 
 ```yaml
 key_vault:
-  name: your-keyvault-name
-  managed_identity_client_id: your-managed-identity-client-id
+  name: "your-keyvault-name"
+  managed_identity_client_id: "your-managed-identity-client-id"
 
 snowflake:
-  database: YOUR_DATABASE
-  warehouse: YOUR_WAREHOUSE
-  schema: YOUR_SCHEMA
-  role: YOUR_ROLE
-  user_domain: optum.com
+  database: "database-name"
+  warehouse: "your-warehouse"
+  schema: "schema-name"
+
+paths:
+  queries_dir: "queries"
+
+query_file: "filename.sql"
+
+detection_levels:
+  by_client:
+    group_cols: ["CLIENT_NAME"]
+  by_category:
+    group_cols: ["ISSUE_CATEGORY"]
+
+# Override defaults
+detection_params:
+  zscore_threshold: 3.0
+  rolling_window: 30
 ```
 
-### Secret Names Expected in Key Vault
+## SQL Query Format
 
-- `snowflake-secret-user`
-- `snowflake-private-key`
-- `snowflake-key-passphrase`
-- `snowflake-secret-account`
-- `snowflake-secret-role`
+Queries are parsed from a single `.sql` file using named markers:
 
-### Fallback
+```sql
+-- @query by_client
+SELECT ISSUE_RECEIVED AS DT, CLIENT_NAME, COUNT(DISTINCT NUMBER) AS ISSUE_VOLUME
+FROM CDW_PRD_CALL_DB.CDW_COVE_RPT_SC.ISSUE_BASE_DETAIL_FACT_TABLE
+WHERE source_system = 'OptumRxServiceNow'
+GROUP BY ALL;
 
-If Key Vault is unreachable, the app automatically falls back to `.env` / environment variables.
+-- @query by_category
+SELECT ...
+```
+
+## Detection Algorithms
+
+| Algorithm | Description |
+|-----------|-------------|
+| **Isolation Forest** | Tree-based isolation of anomalies |
+| **Z-Score** | Statistical thresholding for normal distributions |
+| **DBSCAN** | Density-based clustering for arbitrary distributions |
 
 ## Docker
 
@@ -100,28 +141,15 @@ If Key Vault is unreachable, the app automatically falls back to `.env` / enviro
 docker-compose up --build
 ```
 
-Open `http://localhost:8000/`.
-
-## Dev Mode (Separate Servers)
-
-```bash
-# Terminal 1 — Backend
-cd backend && source .venv/bin/activate && uvicorn app.main:app --reload --port 8000
-
-# Terminal 2 — Frontend
-cd frontend && npm run dev   # runs on :5173, proxies /api to :8000
-```
-
-## Anomaly Detection Algorithms
-
-1. **Isolation Forest** — Tree-based unsupervised detection
-2. **Z-Score** — Statistical thresholding for normal distributions
-3. **DBSCAN** — Density-based clustering for arbitrary distributions
-
 ## Key Design Decisions
 
-- **Class-based Python** — Every module uses OOP with dependency injection
-- **Strategy Pattern** — Detectors inherit from `BaseDetector`; algorithms are swappable via API
-- **Single SQL File** — All queries live in `backend/app/sql/queries.sql` with named tags
-- **React Query + Zustand** — Server state vs. client state cleanly separated
-- **Tailwind + CSS Variables** — Dark/light mode via CSS custom properties
+- **No Node.js / npm** — Dashboard is vanilla HTML/JS served by Jinja2Templates
+- **src layout** — All code lives under `src/anomaly_detection/`
+- **Loguru once** — `configure_logging()` called once in lifespan, modules import `logger` directly
+- **State singletons** — Config, credential manager, and Snowflake client created once in lifespan
+- **Detection factory** — Algorithms register themselves in `detection/factory.py`, no manual wiring
+- **Connection reuse** — Snowflake connections are kept alive via `client_session_keep_alive` and reused across requests
+
+## License
+
+MIT

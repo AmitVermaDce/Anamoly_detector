@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Anomaly Detection</title>
+<style>
+  :root {
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --text: #0f172a;
+    --muted: #64748b;
+    --border: #e2e8f0;
+    --primary: #2563eb;
+    --primary-fg: #ffffff;
+    --destructive: #dc2626;
+    --destructive-bg: #fef2f2;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  header {
+    position: sticky; top: 0; z-index: 50;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.85); backdrop-filter: blur(8px);
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
+  .nav { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 20px 0; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .card-title { font-size: 12px; font-weight: 500; color: var(--muted); }
+  .card-value { font-size: 24px; font-weight: 700; margin-top: 6px; }
+  .form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 12px 0; }
+  label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+  select, input[type="date"] {
+    width: 100%; height: 40px; padding: 0 10px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--card); font-size: 14px;
+  }
+  button {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 40px; padding: 0 16px; border: none; border-radius: var(--radius);
+    background: var(--primary); color: var(--primary-fg); font-size: 14px; font-weight: 500;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .error { background: var(--destructive-bg); color: var(--destructive); padding: 12px; border-radius: var(--radius); margin: 12px 0; }
+  .results { margin-top: 20px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .bar-track { height: 10px; border-radius: 5px; background: #e2e8f0; overflow: hidden; margin: 8px 0; }
+  .bar-fill { height: 100%; border-radius: 5px; }
+  .legend { display: flex; justify-content: space-between; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  tr.anomaly { background: var(--destructive-bg); }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  }
+  .badge-red { background: #fee2e2; color: #991b1b; }
+  .badge-gray { background: #f1f5f9; color: #334155; }
+  .hidden { display: none; }
+  .filter { position: relative; margin: 12px 0; }
+  .filter input { padding-left: 32px; }
+  .spinner {
+    display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  svg.scatter { width: 100%; height: 300px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="container nav">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Anomaly Detection
+    </div>
+  </div>
+</header>
+
+<div class="container">
+  <div class="grid-4" id="stats">
+    <div class="card"><div class="card-title">Total Queries</div><div class="card-value" id="stat-queries">-</div></div>
+    <div class="card"><div class="card-title">Algorithms</div><div class="card-value" id="stat-algos">-</div></div>
+    <div class="card"><div class="card-title">Total Records</div><div class="card-value" id="stat-records">-</div></div>
+    <div class="card"><div class="card-title">Anomalies</div><div class="card-value" id="stat-anomalies" style="color:var(--destructive)">-</div></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0 0 8px">Anomaly Detection</h3>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:13px">Select a query, algorithm, and date range to detect anomalies.</p>
+    <div class="form-grid">
+      <div><label>Query</label><select id="sel-query"><option value="">Select query...</option></select></div>
+      <div><label>Algorithm</label><select id="sel-algo"><option value="isolation_forest">Isolation Forest</option></select></div>
+      <div><label>Detection Level</label><select id="sel-level"><option value="">Default</option></select></div>
+      <div><label>Start Date</label><input type="date" id="inp-start" /></div>
+      <div><label>End Date</label><input type="date" id="inp-end" /></div>
+      <div style="display:flex;align-items:flex-end"><button id="btn-run"><span id="btn-spin" class="spinner hidden"></span><span id="btn-text">Run Detection</span></button></div>
+    </div>
+    <div id="errors" class="hidden"></div>
+  </div>
+
+  <div id="results" class="results hidden">
+    <div class="grid-2">
+      <div class="card">
+        <h4 style="margin:0 0 4px">Distribution</h4>
+        <p style="margin:0 0 10px;color:var(--muted);font-size:13px">Normal vs anomaly</p>
+        <div class="bar-track"><div id="dist-bar" class="bar-fill" style="width:0%;background:var(--success)"></div></div>
+        <div class="legend"><span id="dist-normal">Normal: -</span><span id="dist-anomaly">Anomaly: -</span></div>
+      </div>
+      <div class="card">
+        <h4 style="margin:0 0 4px">Severity</h4>
+        <p style="margin:0 0 10px;color:var(--muted);font-size:13px">Severity distribution</p>
+        <div id="severity-container"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h4 style="margin:0 0 4px">Time Series</h4>
+      <p style="margin:0 0 10px;color:var(--muted);font-size:13px" id="ts-title">-</p>
+      <svg id="ts-chart" class="scatter" viewBox="0 0 800 300"></svg>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div><h4 style="margin:0">Results</h4><p style="margin:4px 0 0;color:var(--muted);font-size:13px" id="results-meta">-</p></div>
+        <div class="filter"><svg width="16" height="16" style="position:absolute;left:10px;top:12px;opacity:0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" id="inp-filter" placeholder="Filter records..." /></div>
+      </div>
+      <div style="overflow-x:auto;margin-top:12px">
+        <table>
+          <thead><tr id="table-head"></tr></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+        <p style="text-align:center;color:var(--muted);font-size:12px;margin-top:8px" id="table-more"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/v1';
+let lastResult = null;
+
+async function apiFetch(path, opts) {
+  const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || res.statusText || 'Request failed');
+  }
+  return res.json();
+}
+
+async function loadQueries() {
+  const qs = await apiFetch('/queries');
+  const sel = document.getElementById('sel-query');
+  sel.innerHTML = '<option value="">Select query...</option>' + qs.map(q => `<option value="${q}">${q.replace(/_/g,' ').replace(/\\b\\w/g,c=>c.toUpperCase())}</option>`).join('');
+  document.getElementById('stat-queries').textContent = qs.length;
+}
+
+async function loadAlgorithms() {
+  const data = await apiFetch('/algorithms');
+  const sel = document.getElementById('sel-algo');
+  sel.innerHTML = data.algorithms.map(a => `<option value="${a.name}">${a.display_name}</option>`).join('');
+  document.getElementById('stat-algos').textContent = data.algorithms.length;
+}
+
+async function loadLevels() {
+  const data = await apiFetch('/levels');
+  const sel = document.getElementById('sel-level');
+  sel.innerHTML = '<option value="">Default</option>' + data.levels.map(l => `<option value="${l.name}">${l.name.replace(/_/g,' ').replace(/\\b\\w/g,c=>c.toUpperCase())}</option>`).join('');
+}
+
+function showError(msg) {
+  const el = document.getElementById('errors');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+function clearError() { document.getElementById('errors').classList.add('hidden'); }
+
+function setLoading(v) {
+  document.getElementById('btn-run').disabled = v;
+  document.getElementById('btn-spin').classList.toggle('hidden', !v);
+  document.getElementById('btn-text').textContent = v ? 'Running...' : 'Run Detection';
+}
+
+function pickTimeColumn(rec) {
+  const keys = Object.keys(rec);
+  return keys.find(k => /date|timestamp|time/i.test(k)) || keys[0];
+}
+function pickNumericColumn(rec) {
+  const keys = Object.keys(rec);
+  return keys.find(k => /amount|value|score|revenue|count/i.test(k))
+    || keys.find(k => typeof rec[k] === 'number')
+    || keys[0];
+}
+
+function renderDistribution(normal, anomaly) {
+  const total = normal + anomaly || 1;
+  const aPct = (anomaly / total) * 100;
+  document.getElementById('dist-bar').style.width = ((normal/total)*100) + '%';
+  document.getElementById('dist-bar').style.background = anomaly > 0 ? `linear-gradient(90deg, var(--success) ${100-aPct}%, var(--destructive) ${100-aPct}%)` : 'var(--success)';
+  document.getElementById('dist-normal').textContent = `Normal: ${normal} (${Math.round((normal/total)*100)}%)`;
+  document.getElementById('dist-anomaly').textContent = `Anomaly: ${anomaly} (${Math.round(aPct)}%)`;
+}
+
+function renderSeverity(dist) {
+  const container = document.getElementById('severity-container');
+  const entries = Object.entries(dist);
+  if (!entries.length) { container.innerHTML = '<p style="color:var(--muted);font-size:13px">No severity data.</p>'; return; }
+  const max = Math.max(...entries.map(([,v])=>v),1);
+  const colors = { low:'#10b981', medium:'#f59e0b', high:'#ef4444' };
+  container.innerHTML = entries.map(([k,v]) => `
+    <div style="margin:8px 0">
+      <div style="display:flex;justify-content:space-between;font-size:13px"><span class="capitalize">${k}</span><span>${v}</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(v/max)*100}%;background:${colors[k]||'#888'}"></div></div>
+    </div>`).join('');
+}
+
+function renderTimeSeries(records, xKey, yKey) {
+  const pts = records.map(r => ({
+    x: typeof r[xKey]==='string' ? new Date(r[xKey]).getTime() : (+r[xKey]||0),
+    y: typeof r[yKey]==='string' ? parseFloat(r[yKey]) : (+r[yKey]||0),
+    a: !!r.is_anomaly
+  }));
+  const xs = pts.map(p=>p.x).filter(v=>!isNaN(v));
+  const ys = pts.map(p=>p.y).filter(v=>!isNaN(v));
+  if (!xs.length || !ys.length) { document.getElementById('ts-chart').innerHTML=''; return; }
+  const xMin=Math.min(...xs), xMax=Math.max(...xs), xR=xMax-xMin||1;
+  const yMin=Math.min(...ys), yMax=Math.max(...ys), yR=yMax-yMin||1;
+  const W=800, H=300, P=40;
+  const sx = v => P + ((v-xMin)/xR)*(W-P*2);
+  const sy = v => H - P - ((v-yMin)/yR)*(H-P*2);
+  const fmt = v => new Date(v).toLocaleDateString();
+  const svg = document.getElementById('ts-chart');
+  svg.innerHTML = '';
+  const ns = 'http://www.w3.org/2000/svg';
+  const mk = (t,attrs={}) => { const e=document.createElementNS(ns,t); for(const[k,v]of Object.entries(attrs))e.setAttribute(k,String(v)); return e; };
+  svg.appendChild(mk('line',{x1:P,y1:H-P,x2:W-P,y2:H-P,stroke:'#cbd5e1','stroke-width':1}));
+  svg.appendChild(mk('line',{x1:P,y1:P,x2:P,y2:H-P,stroke:'#cbd5e1','stroke-width':1}));
+  pts.forEach(p => {
+    const c = mk('circle',{cx:sx(p.x),cy:sy(p.y),r:p.a?4:2,fill:p.a?'#dc2626':'#94a3b8',opacity:p.a?1:0.6});
+    svg.appendChild(c);
+  });
+  [0,0.5,1].forEach(t=>{
+    const y=yMin+t*yR;
+    const txt=mk('text',{x:P-6,y:sy(y)+4,'text-anchor':'end','font-size':10,fill:'#64748b'});
+    txt.textContent=Math.round(y).toLocaleString();
+    svg.appendChild(txt);
+  });
+  [0,0.5,1].forEach(t=>{
+    const x=xMin+t*xR;
+    const txt=mk('text',{x:sx(x),y:H-P+16,'text-anchor':'middle','font-size':10,fill:'#64748b'});
+    txt.textContent=fmt(x);
+    svg.appendChild(txt);
+  });
+  document.getElementById('ts-title').textContent = `${xKey} vs ${yKey}`;
+}
+
+function renderTable(records) {
+  const filter = document.getElementById('inp-filter').value.toLowerCase();
+  const filtered = filter ? records.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(filter))) : records;
+  const head = document.getElementById('table-head');
+  const body = document.getElementById('table-body');
+  if (!records.length) { head.innerHTML=''; body.innerHTML=''; return; }
+  const keys = Object.keys(records[0]);
+  head.innerHTML = keys.map(k => `<th>${k}</th>`).join('');
+  body.innerHTML = filtered.slice(0,100).map((r,idx) =>
+    `<tr class="${r.is_anomaly?'anomaly':''}">` + keys.map(k => {
+      const v = r[k];
+      if (typeof v === 'boolean') return `<td><span class="badge ${v?'badge-red':'badge-gray'}">${v?'Yes':'No'}</span></td>`;
+      return `<td>${v===null||v===undefined?'':String(v)}</td>`;
+    }).join('') + '</tr>'
+  ).join('');
+  const more = document.getElementById('table-more');
+  more.textContent = filtered.length > 100 ? `Showing first 100 of ${filtered.length} records.` : '';
+}
+
+function showResults(result) {
+  lastResult = result;
+  document.getElementById('results').classList.remove('hidden');
+  document.getElementById('stat-records').textContent = result.total_records.toLocaleString();
+  document.getElementById('stat-anomalies').textContent = result.anomaly_count.toLocaleString();
+  const s = result.summary;
+  renderDistribution(s.normal_count, s.anomaly_count);
+  renderSeverity(s.severity_distribution || {});
+  if (result.records.length) {
+    const t = pickTimeColumn(result.records[0]);
+    const n = pickNumericColumn(result.records[0]);
+    renderTimeSeries(result.records, t, n);
+  }
+  document.getElementById('results-meta').textContent = `${result.records.length} of ${result.total_records} records`;
+  renderTable(result.records);
+}
+
+document.getElementById('btn-run').addEventListener('click', async () => {
+  const query = document.getElementById('sel-query').value;
+  if (!query) { showError('Please select a query.'); return; }
+  clearError(); setLoading(true);
+  try {
+    const result = await apiFetch('/detect', {
+      method: 'POST',
+      body: JSON.stringify({
+        query_name: query,
+        algorithm: document.getElementById('sel-algo').value,
+        detection_level: document.getElementById('sel-level').value || null,
+        columns: [],
+        parameters: {},
+        start_date: document.getElementById('inp-start').value || null,
+        end_date: document.getElementById('inp-end').value || null,
+      })
+    });
+    showResults(result);
+  } catch (err) {
+    showError(err.message);
+  } finally { setLoading(false); }
+});
+
+document.getElementById('inp-filter').addEventListener('input', () => {
+  if (lastResult) renderTable(lastResult.records);
+});
+
+Promise.all([loadQueries(), loadAlgorithms(), loadLevels()]).catch(e => showError(e.message));
+</script>
+</body>
+</html>

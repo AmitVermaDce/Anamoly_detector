@@ -2,16 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_DIR="$SCRIPT_DIR/backend"
-FRONTEND_DIR="$SCRIPT_DIR/frontend"
 
-echo "[INFO] Building frontend..."
-cd "$FRONTEND_DIR"
-npm install
-npm run build
-
-echo "[INFO] Setting up backend..."
-cd "$BACKEND_DIR"
+echo "[INFO] Setting up..."
+cd "$SCRIPT_DIR"
 
 if command -v conda &>/dev/null; then
     ENV_NAME="anomaly-detection"
@@ -41,4 +34,4 @@ echo ""
 echo "Press Ctrl+C to stop"
 echo ""
 
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+exec uvicorn anomaly_detection.app:app --host 0.0.0.0 --port 8000
