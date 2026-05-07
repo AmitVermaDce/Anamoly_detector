@@ -19,6 +19,9 @@ paths:
   queries_dir: "queries"
   artifacts_dir: "artifacts"
 
+# Optional CSV fallback for dev/testing (comment out or remove to use Snowflake)
+# local_csv: "data/issues.csv"
+
 # ---- SQL Query File & Key ----
 # The .sql file holds one base query marked with -- @query base
 query_file: "filename.sql"
