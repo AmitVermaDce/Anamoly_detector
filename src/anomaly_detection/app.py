@@ -42,6 +42,8 @@ async def lifespan(application: FastAPI):
         state.credential_manager = CredentialManager()
         _ = state.credential_manager.config
         state.snowflake_client = SnowflakeClient(credential_manager=state.credential_manager)
+        # Eagerly test the connection so Key Vault credential failures surface here
+        state.snowflake_client.get_active_connection()
     except Exception as exc:
         logger.warning("Azure Key Vault not available ({error}). Falling back to .env.", error=exc)
         state.snowflake_client = SnowflakeClient(settings=settings)
