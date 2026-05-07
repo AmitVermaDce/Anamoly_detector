@@ -7,6 +7,7 @@ import pandas as pd
 from loguru import logger
 
 from anomaly_detection.config import Config, Settings, get_settings
+from anomaly_detection.database.credentials import CredentialManager
 from anomaly_detection.database.queries import SQLQueryLoader
 from anomaly_detection.database.snowflake import SnowflakeClient
 from anomaly_detection.exceptions import QueryExecutionError
@@ -70,14 +71,20 @@ class DataService:
             raise QueryExecutionError("Query loader not available.")
         sql = self._query_loader.get_query(query_key)
 
-        logger.info("Executing base query '{key}'", key=query_key)
-        client = self._get_client()
-        df = client.execute_query(sql)
+        logger.info("Executing base query '{key}' against Snowflake", key=query_key)
+        cred_mgr = CredentialManager()
+        conn = cred_mgr.get_snowflake_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(sql)
+            df = cur.fetch_pandas_all()
+            logger.info("Base query returned {rows} rows", rows=len(df))
+        finally:
+            conn.close()
 
         if "DT" in df.columns:
             df["DT"] = pd.to_datetime(df["DT"])
 
-        logger.info("Base query returned {rows} rows", rows=len(df))
         self._base_df = df
         return df
 
