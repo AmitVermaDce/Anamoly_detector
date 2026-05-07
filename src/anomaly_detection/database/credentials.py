@@ -103,12 +103,16 @@ class CredentialManager:
 
         import snowflake.connector
 
-        return snowflake.connector.connect(
-            account=sf_creds["account"],
-            user=f"{sf_creds['user']}@optum.com",
-            private_key=pk_bytes,
-            role=sf_creds.get("role") or sf_cfg.get("role", ""),
-            database=sf_cfg["database"],
-            warehouse=sf_cfg["warehouse"],
-            schema=sf_cfg["schema"],
-        )
+        connect_params: dict[str, Any] = {
+            "account": sf_creds["account"],
+            "user": f"{sf_creds['user']}@optum.com",
+            "private_key": pk_bytes,
+            "role": sf_creds.get("role") or sf_cfg.get("role", ""),
+        }
+
+        for key in ("database", "warehouse", "schema"):
+            val = sf_cfg.get(key)
+            if val and not val.startswith("your-"):
+                connect_params[key] = val
+
+        return snowflake.connector.connect(**connect_params)

@@ -10,7 +10,7 @@ key_vault:
 # ---- Snowflake Connection ----
 snowflake:
   database: "CDW_PRD_CALL_DB"
-  warehouse: "your-warehouse"
+  warehouse: ""       # set to your real warehouse name
   schema: "CDW_COVE_RPT_SC"
   role: ""            # loaded from Key Vault if blank
 
