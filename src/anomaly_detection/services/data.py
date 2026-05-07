@@ -63,5 +63,8 @@ class DataService:
     def _get_client(self) -> SnowflakeClient:
         if self._snowflake_client is None:
             from anomaly_detection import state
-            self._snowflake_client = state.snowflake_client or SnowflakeClient(self._settings)
+            if state.snowflake_client is not None:
+                self._snowflake_client = state.snowflake_client
+            else:
+                self._snowflake_client = SnowflakeClient(self._settings)
         return self._snowflake_client

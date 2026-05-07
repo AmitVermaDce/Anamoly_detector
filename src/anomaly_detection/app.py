@@ -46,7 +46,12 @@ async def lifespan(application: FastAPI):
         state.snowflake_client.get_active_connection()
     except Exception as exc:
         logger.warning("Azure Key Vault not available ({error}). Falling back to .env.", error=exc)
-        state.snowflake_client = SnowflakeClient(settings=settings)
+        try:
+            state.snowflake_client = SnowflakeClient(settings=settings)
+            state.snowflake_client.get_active_connection()
+        except Exception as env_exc:
+            logger.warning(".env credentials also unavailable ({error}). Snowflake will be disabled.", error=env_exc)
+            state.snowflake_client = None
 
     yield
 
