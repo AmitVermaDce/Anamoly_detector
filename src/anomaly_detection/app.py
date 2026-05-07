@@ -88,7 +88,7 @@ def create_application() -> FastAPI:
 
     @app.get("/")
     async def serve_dashboard(request: Request):
-        return templates.TemplateResponse("index.html", {"request": request})
+        return templates.TemplateResponse(request, "index.html", {})
 
     return app
 
