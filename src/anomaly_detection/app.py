@@ -38,6 +38,10 @@ async def lifespan(application: FastAPI):
     query_file = state.config.query_file() or "query.sql"
     state.query_loader = SQLQueryLoader(package_root / queries_dir / query_file)
 
+    # Ensure artifacts directory exists
+    artifacts_dir = package_root / (state.config.artifacts_dir() or "artifacts")
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
     try:
         state.credential_manager = CredentialManager()
         _ = state.credential_manager.config

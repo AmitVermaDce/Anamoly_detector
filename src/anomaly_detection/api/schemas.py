@@ -15,9 +15,21 @@ class QueryListResponse(BaseModel):
     queries: List[str]
 
 
+class ArtifactInfo(BaseModel):
+    name: str
+    filename: str
+    size_bytes: int
+    modified: float
+
+
+class ArtifactListResponse(BaseModel):
+    artifacts: List[ArtifactInfo]
+
+
 class AnomalyDetectionRequest(BaseModel):
     query_name: str
     algorithm: Literal["isolation_forest", "zscore", "dbscan"] = "isolation_forest"
+    fetch: bool = False
     detection_level: Optional[str] = None
     columns: List[str] = Field(default_factory=list)
     parameters: Dict[str, Any] = Field(default_factory=dict)
@@ -28,6 +40,7 @@ class AnomalyDetectionRequest(BaseModel):
 class AnomalyDetectionResponse(BaseModel):
     query_name: str
     algorithm: str
+    fetch: bool = False
     detection_level: Optional[str] = None
     total_records: int
     anomaly_count: int

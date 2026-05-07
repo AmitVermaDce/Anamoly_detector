@@ -22,10 +22,15 @@ paths:
 # Optional CSV fallback for dev/testing (comment out or remove to use Snowflake)
 # local_csv: "data/issues.csv"
 
-# ---- SQL Query File & Key ----
-# The .sql file holds one base query marked with -- @query base
+# ---- SQL Query File ----
 query_file: "query.sql"
-query_key: "base"
+
+# ---- Artifact filenames per query (configurable in one place) ----
+query_artifacts:
+  by_client: "by_client.csv"
+  by_category: "by_category.csv"
+  by_subcategory: "by_subcategory.csv"
+  by_client_category: "by_client_category.csv"
 
 # ---- Detection Levels ----
 # Each level defines which columns to group by when aggregating the base data.

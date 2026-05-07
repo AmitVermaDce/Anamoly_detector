@@ -78,19 +78,20 @@ class DetectionService:
         parameters: dict[str, Any] | None = None,
         query_parameters: dict[str, Any] | None = None,
         detection_level: str | None = None,
+        fetch: bool = False,
     ) -> dict[str, Any]:
         logger.info(
-            "Detecting anomalies: query={query}, algorithm={algorithm}, level={level}",
+            "Detecting anomalies: query={query}, algorithm={algorithm}, fetch={fetch}",
             query=query_name,
             algorithm=algorithm,
-            level=detection_level or "default",
+            fetch=fetch,
         )
 
         merged = self._config.detection_params().copy()
         if parameters:
             merged.update(parameters)
 
-        dataframe = self._data_service.fetch_data(query_name, query_parameters)
+        dataframe = self._data_service.fetch_data(query_name, query_parameters, fetch=fetch)
         detector = create_detector(algorithm, merged)
         result = detector.detect(dataframe, columns)
 
@@ -108,6 +109,7 @@ class DetectionService:
         return {
             "query_name": query_name,
             "algorithm": algorithm,
+            "fetch": fetch,
             "detection_level": detection_level,
             "total_records": total,
             "anomaly_count": anomalies,

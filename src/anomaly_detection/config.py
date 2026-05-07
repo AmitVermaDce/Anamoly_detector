@@ -104,5 +104,11 @@ class Config:
     def queries_dir(self) -> str | None:
         return self.get("paths.queries_dir")
 
+    def artifacts_dir(self) -> str | None:
+        return self.get("paths.artifacts_dir")
+
     def query_file(self) -> str | None:
         return self.get("query_file")
+
+    def query_artifacts(self) -> dict[str, str]:
+        return self.get("query_artifacts", {})

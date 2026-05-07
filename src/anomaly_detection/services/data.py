@@ -9,117 +9,111 @@ from loguru import logger
 from anomaly_detection.config import Config, Settings, get_settings
 from anomaly_detection.database.credentials import CredentialManager
 from anomaly_detection.database.queries import SQLQueryLoader
-from anomaly_detection.database.snowflake import SnowflakeClient
 from anomaly_detection.exceptions import QueryExecutionError
 from anomaly_detection import state
 
 
 class DataService:
-    """Loads base data once (Snowflake or CSV) and aggregates per detection level."""
+    """Fetches query data from Snowflake or loads cached artifacts."""
 
     def __init__(
         self,
         settings: Settings | None = None,
-        snowflake_client: SnowflakeClient | None = None,
         query_loader: SQLQueryLoader | None = None,
         config: Config | None = None,
     ) -> None:
         self._settings = settings or get_settings()
-        self._snowflake_client = snowflake_client
         self._config = config or state.config
         self._query_loader = query_loader or state.query_loader
-        self._base_df: pd.DataFrame | None = None
 
+    # ------------------------------------------------------------------ paths
+    def _project_root(self) -> Path:
+        return Path(__file__).resolve().parent.parent.parent
+
+    def _artifacts_dir(self) -> Path:
+        rel = self._config.artifacts_dir() or "artifacts"
+        return self._project_root() / rel
+
+    def _artifact_path(self, query_name: str) -> Path:
+        mapping = self._config.query_artifacts()
+        filename = mapping.get(query_name, f"{query_name}.csv")
+        return self._artifacts_dir() / filename
+
+    # ------------------------------------------------------------------ lists
     def list_queries(self) -> list[str]:
-        """Return detection level names (used as virtual query names)."""
-        return list(self._config.detection_levels().keys())
+        """Return actual SQL query names from the query file."""
+        if self._query_loader is None:
+            return []
+        return self._query_loader.list_queries()
 
-    def _get_client(self) -> SnowflakeClient:
-        if self._snowflake_client is None:
-            from anomaly_detection import state
-            if state.snowflake_client is not None:
-                self._snowflake_client = state.snowflake_client
-            else:
-                self._snowflake_client = SnowflakeClient(self._settings)
-        return self._snowflake_client
+    def list_artifacts(self) -> list[dict[str, Any]]:
+        """Return existing artifact files with metadata."""
+        artifacts: list[dict[str, Any]] = []
+        art_dir = self._artifacts_dir()
+        if not art_dir.exists():
+            return artifacts
+        for path in sorted(art_dir.glob("*.csv")):
+            artifacts.append({
+                "name": path.stem,
+                "filename": path.name,
+                "size_bytes": path.stat().st_size,
+                "modified": path.stat().st_mtime,
+            })
+        return artifacts
 
-    def _load_local_csv(self) -> pd.DataFrame | None:
-        local_csv = self._config.get("local_csv")
-        if not local_csv:
-            return None
-        csv_path = Path(__file__).resolve().parent.parent.parent / local_csv
-        if not csv_path.exists():
-            return None
-        logger.info("Loading local CSV: {path}", path=str(csv_path))
-        df = pd.read_csv(csv_path, parse_dates=["DT"])
-        logger.info("CSV loaded: {rows} rows", rows=len(df))
+    # ------------------------------------------------------------------ fetch
+    def fetch_data(
+        self,
+        query_name: str,
+        parameters: dict[str, Any] | None = None,
+        fetch: bool = False,
+    ) -> pd.DataFrame:
+        """
+        Fetch data for a query.
+        If fetch=True: run Snowflake query and save to artifacts.
+        If fetch=False: load from existing artifact CSV.
+        """
+        if fetch:
+            return self._fetch_from_snowflake(query_name)
+        return self._load_artifact(query_name)
+
+    def _load_artifact(self, query_name: str) -> pd.DataFrame:
+        path = self._artifact_path(query_name)
+        if not path.exists():
+            raise QueryExecutionError(
+                f"Artifact not found for '{query_name}': {path.name}. "
+                f"Enable 'Fetch new data' to generate it."
+            )
+        logger.info("Loading artifact: {path}", path=str(path))
+        df = pd.read_csv(path)
+        if "DT" in df.columns:
+            df["DT"] = pd.to_datetime(df["DT"])
+        logger.info("Artifact loaded: {rows} rows", rows=len(df))
         return df
 
-    def _fetch_base(self) -> pd.DataFrame:
-        """Fetch base data from Snowflake or CSV fallback."""
-        if self._base_df is not None:
-            return self._base_df
-
-        # Try CSV first (for dev/testing)
-        df = self._load_local_csv()
-        if df is not None:
-            self._base_df = df
-            return df
-
-        query_key = self._config.get("query_key", "base")
+    def _fetch_from_snowflake(self, query_name: str) -> pd.DataFrame:
         if self._query_loader is None:
             raise QueryExecutionError("Query loader not available.")
-        sql = self._query_loader.get_query(query_key)
+        sql = self._query_loader.get_query(query_name)
 
-        logger.info("Executing base query '{key}' against Snowflake", key=query_key)
+        logger.info("Executing query '{key}' against Snowflake", key=query_name)
         cred_mgr = CredentialManager()
         conn = cred_mgr.get_snowflake_connection()
         try:
             cur = conn.cursor()
             cur.execute(sql)
             df = cur.fetch_pandas_all()
-            logger.info("Base query returned {rows} rows", rows=len(df))
+            logger.info("Query returned {rows} rows", rows=len(df))
         finally:
             conn.close()
 
         if "DT" in df.columns:
             df["DT"] = pd.to_datetime(df["DT"])
 
-        self._base_df = df
+        # Save to artifacts
+        art_path = self._artifact_path(query_name)
+        art_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(art_path, index=False)
+        logger.info("Saved artifact: {path}", path=str(art_path))
+
         return df
-
-    def aggregate(self, level_name: str) -> pd.DataFrame:
-        """Aggregate base data by detection level."""
-        levels = self._config.detection_levels()
-        if level_name not in levels:
-            raise QueryExecutionError(
-                f"Detection level '{level_name}' not found. "
-                f"Available: {list(levels.keys())}"
-            )
-
-        group_cols = levels[level_name]["group_cols"]
-        base = self._fetch_base()
-
-        agg = (
-            base.groupby(["DT"] + group_cols, as_index=False)["ISSUE_VOLUME"]
-            .sum()
-        )
-        logger.info(
-            "Level '{level}': aggregated to {rows} rows (groups: {cols})",
-            level=level_name,
-            rows=len(agg),
-            cols=group_cols,
-        )
-        return agg
-
-    def fetch_data(
-        self,
-        query_name: str,
-        parameters: dict[str, Any] | None = None,
-    ) -> pd.DataFrame:
-        """Fetch data for a virtual query (maps to detection level aggregation)."""
-        try:
-            return self.aggregate(query_name)
-        except Exception as exc:
-            logger.error("Data fetch failed: {error}", error=str(exc))
-            raise QueryExecutionError(f"Failed to fetch data for '{query_name}': {exc}") from exc

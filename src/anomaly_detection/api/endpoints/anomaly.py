@@ -5,6 +5,7 @@ from anomaly_detection.api.schemas import (
     AlgorithmListResponse,
     AnomalyDetectionRequest,
     AnomalyDetectionResponse,
+    ArtifactListResponse,
     DetectionLevelListResponse,
     QueryListResponse,
 )
@@ -47,6 +48,20 @@ async def list_queries(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Query file not found: {exc}",
         ) from exc
+
+
+@router.get(
+    "/artifacts",
+    response_model=ArtifactListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List cached artifacts",
+    tags=["Artifacts"],
+)
+async def list_artifacts(
+    data_service: DataService = Depends(get_data_service),
+) -> ArtifactListResponse:
+    artifacts = data_service.list_artifacts()
+    return ArtifactListResponse(artifacts=artifacts)
 
 
 @router.get(
@@ -104,6 +119,7 @@ async def detect_anomalies(
             parameters=request.parameters or {},
             query_parameters=params,
             detection_level=request.detection_level,
+            fetch=request.fetch,
         )
         return AnomalyDetectionResponse(**result)
     except ApplicationException as exc:

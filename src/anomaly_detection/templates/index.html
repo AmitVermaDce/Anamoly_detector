@@ -40,16 +40,29 @@
   .card-title { font-size: 12px; font-weight: 500; color: var(--muted); }
   .card-value { font-size: 24px; font-weight: 700; margin-top: 6px; }
   .form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 12px 0; }
+  .form-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 12px 0; }
   label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
   select, input[type="date"] {
     width: 100%; height: 40px; padding: 0 10px; border: 1px solid var(--border);
     border-radius: var(--radius); background: var(--card); font-size: 14px;
+  }
+  .toggle-row {
+    display: flex; align-items: center; gap: 10px;
+    height: 40px; padding: 0 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--card); font-size: 14px;
+  }
+  .toggle-row input[type="checkbox"] {
+    width: 18px; height: 18px; accent-color: var(--primary);
   }
   button {
     display: inline-flex; align-items: center; gap: 6px;
     height: 40px; padding: 0 16px; border: none; border-radius: var(--radius);
     background: var(--primary); color: var(--primary-fg); font-size: 14px; font-weight: 500;
     cursor: pointer;
+  }
+  button.secondary {
+    background: var(--card); color: var(--text); border: 1px solid var(--border);
   }
   button:disabled { opacity: 0.6; cursor: not-allowed; }
   .error { background: var(--destructive-bg); color: var(--destructive); padding: 12px; border-radius: var(--radius); margin: 12px 0; }
@@ -76,6 +89,19 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   svg.scatter { width: 100%; height: 300px; }
+  .artifact-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+    margin: 6px 0; font-size: 13px;
+  }
+  .artifact-item:hover { background: #f8fafc; }
+  .artifact-name { font-weight: 500; }
+  .artifact-meta { color: var(--muted); font-size: 12px; }
+  .artifact-actions { display: flex; gap: 8px; }
+  .artifact-actions button {
+    height: 28px; padding: 0 10px; font-size: 12px;
+  }
+  .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 20px 0; }
 </style>
 </head>
 <body>
@@ -98,16 +124,27 @@
 
   <div class="card">
     <h3 style="margin:0 0 8px">Anomaly Detection</h3>
-    <p style="margin:0 0 12px;color:var(--muted);font-size:13px">Select a query, algorithm, and date range to detect anomalies.</p>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:13px">Select a query and algorithm. Enable "Fetch new data" to pull from Snowflake, otherwise cached artifacts are used.</p>
     <div class="form-grid">
       <div><label>Query</label><select id="sel-query"><option value="">Select query...</option></select></div>
       <div><label>Algorithm</label><select id="sel-algo"><option value="isolation_forest">Isolation Forest</option></select></div>
-      <div><label>Detection Level</label><select id="sel-level"><option value="">Default</option></select></div>
       <div><label>Start Date</label><input type="date" id="inp-start" /></div>
       <div><label>End Date</label><input type="date" id="inp-end" /></div>
+      <div style="display:flex;align-items:flex-end">
+        <label class="toggle-row" style="width:100%;cursor:pointer">
+          <input type="checkbox" id="chk-fetch" />
+          <span>Fetch new data from Snowflake</span>
+        </label>
+      </div>
       <div style="display:flex;align-items:flex-end"><button id="btn-run"><span id="btn-spin" class="spinner hidden"></span><span id="btn-text">Run Detection</span></button></div>
     </div>
     <div id="errors" class="hidden"></div>
+  </div>
+
+  <div class="card" id="artifacts-card">
+    <h3 style="margin:0 0 8px">Artifacts</h3>
+    <p style="margin:0 0 12px;color:var(--muted);font-size:13px">Cached query outputs. Click "Use" to run detection on an existing artifact.</p>
+    <div id="artifacts-list"><p class="empty">Loading artifacts...</p></div>
   </div>
 
   <div id="results" class="results hidden">
@@ -174,10 +211,37 @@ async function loadAlgorithms() {
   document.getElementById('stat-algos').textContent = data.algorithms.length;
 }
 
-async function loadLevels() {
-  const data = await apiFetch('/levels');
-  const sel = document.getElementById('sel-level');
-  sel.innerHTML = '<option value="">Default</option>' + data.levels.map(l => `<option value="${l.name}">${l.name.replace(/_/g,' ').replace(/\\b\\w/g,c=>c.toUpperCase())}</option>`).join('');
+async function loadArtifacts() {
+  try {
+    const data = await apiFetch('/artifacts');
+    const container = document.getElementById('artifacts-list');
+    if (!data.artifacts || data.artifacts.length === 0) {
+      container.innerHTML = '<p class="empty">No artifacts yet. Run a query with "Fetch new data" enabled to create one.</p>';
+      return;
+    }
+    container.innerHTML = data.artifacts.map(a => {
+      const size = a.size_bytes > 1024*1024 ? (a.size_bytes/(1024*1024)).toFixed(1)+' MB' : (a.size_bytes/1024).toFixed(1)+' KB';
+      const date = new Date(a.modified * 1000).toLocaleString();
+      return `
+        <div class="artifact-item">
+          <div>
+            <div class="artifact-name">${a.name}</div>
+            <div class="artifact-meta">${a.filename} &middot; ${size} &middot; ${date}</div>
+          </div>
+          <div class="artifact-actions">
+            <button class="secondary" onclick="useArtifact('${a.name}')">Use</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('artifacts-list').innerHTML = '<p class="empty">Failed to load artifacts.</p>';
+  }
+}
+
+function useArtifact(name) {
+  document.getElementById('sel-query').value = name;
+  document.getElementById('chk-fetch').checked = false;
+  runDetection();
 }
 
 function showError(msg) {
@@ -199,7 +263,7 @@ function pickTimeColumn(rec) {
 }
 function pickNumericColumn(rec) {
   const keys = Object.keys(rec);
-  return keys.find(k => /amount|value|score|revenue|count/i.test(k))
+  return keys.find(k => /amount|value|score|revenue|count|volume/i.test(k))
     || keys.find(k => typeof rec[k] === 'number')
     || keys[0];
 }
@@ -302,34 +366,39 @@ function showResults(result) {
   renderTable(result.records);
 }
 
-document.getElementById('btn-run').addEventListener('click', async () => {
+async function runDetection() {
   const query = document.getElementById('sel-query').value;
   if (!query) { showError('Please select a query.'); return; }
   clearError(); setLoading(true);
   try {
-    const result = await apiFetch('/detect', {
-      method: 'POST',
-      body: JSON.stringify({
-        query_name: query,
-        algorithm: document.getElementById('sel-algo').value,
-        detection_level: document.getElementById('sel-level').value || null,
-        columns: [],
-        parameters: {},
-        start_date: document.getElementById('inp-start').value || null,
-        end_date: document.getElementById('inp-end').value || null,
-      })
-    });
+    const payload = {
+      query_name: query,
+      algorithm: document.getElementById('sel-algo').value,
+      fetch: document.getElementById('chk-fetch').checked,
+      columns: [],
+      parameters: {},
+    };
+    const start = document.getElementById('inp-start').value;
+    const end = document.getElementById('inp-end').value;
+    if (start) payload.start_date = start;
+    if (end) payload.end_date = end;
+
+    const result = await apiFetch('/detect', { method: 'POST', body: JSON.stringify(payload) });
     showResults(result);
+    // Refresh artifacts list after successful fetch
+    if (result.fetch) loadArtifacts();
   } catch (err) {
     showError(err.message);
   } finally { setLoading(false); }
-});
+}
+
+document.getElementById('btn-run').addEventListener('click', runDetection);
 
 document.getElementById('inp-filter').addEventListener('input', () => {
   if (lastResult) renderTable(lastResult.records);
 });
 
-Promise.all([loadQueries(), loadAlgorithms(), loadLevels()]).catch(e => showError(e.message));
+Promise.all([loadQueries(), loadAlgorithms(), loadArtifacts()]).catch(e => showError(e.message));
 </script>
 </body>
 </html>
