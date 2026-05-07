@@ -117,17 +117,13 @@ class CredentialManager:
         if missing:
             raise ConfigurationError(f"Missing Key Vault secrets: {', '.join(missing)}")
 
-        user = sf_creds["user"]
-        if "@" not in user and sf_cfg.get("user_domain"):
-            user = f"{user}@{sf_cfg['user_domain']}"
-
         import snowflake.connector
 
         connection = snowflake.connector.connect(
             account=sf_creds["account"],
-            user=user,
+            user=f"{sf_creds['user']}@optum.com",
             private_key=pk_bytes,
-            role=sf_creds.get("role") or sf_cfg.get("role", ""),
+            role=sf_creds.get("role", ""),
             database=sf_cfg.get("database", ""),
             warehouse=sf_cfg.get("warehouse", ""),
             schema=sf_cfg.get("schema", ""),
