@@ -161,10 +161,10 @@ async function apiFetch(path, opts) {
 }
 
 async function loadQueries() {
-  const qs = await apiFetch('/queries');
+  const data = await apiFetch('/queries');
   const sel = document.getElementById('sel-query');
-  sel.innerHTML = '<option value="">Select query...</option>' + qs.map(q => `<option value="${q}">${q.replace(/_/g,' ').replace(/\\b\\w/g,c=>c.toUpperCase())}</option>`).join('');
-  document.getElementById('stat-queries').textContent = qs.length;
+  sel.innerHTML = '<option value="">Select query...</option>' + data.queries.map(q => `<option value="${q}">${q.replace(/_/g,' ').replace(/\\b\\w/g,c=>c.toUpperCase())}</option>`).join('');
+  document.getElementById('stat-queries').textContent = data.queries.length;
 }
 
 async function loadAlgorithms() {
