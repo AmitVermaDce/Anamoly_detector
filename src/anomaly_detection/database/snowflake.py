@@ -146,6 +146,10 @@ class SnowflakeClient:
                 else:
                     cursor.execute(query)
 
+                # Prefer Snowflake's native pandas fetch (installed via [pandas] extra)
+                if hasattr(cursor, "fetch_pandas_all"):
+                    return cursor.fetch_pandas_all()
+
                 columns = [desc[0] for desc in cursor.description]
                 data = cursor.fetchall()
                 return pd.DataFrame(data, columns=columns)
