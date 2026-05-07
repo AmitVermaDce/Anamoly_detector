@@ -14,6 +14,8 @@ from anomaly_detection.exceptions import ConfigurationError
 
 
 class CredentialManager:
+    """Retrieves and caches secrets from Azure Key Vault."""
+
     def __init__(self, config_path: str | Path | None = None) -> None:
         self._config: dict[str, Any] | None = None
         self._credentials: dict[str, dict[str, str]] | None = None
@@ -60,44 +62,30 @@ class CredentialManager:
 
         self._credentials = {
             "snowflake": {
-                "user": self._safe_get(client, "snowflake-secret-user"),
-                "private_key": self._safe_get(client, "snowflake-private-key"),
-                "private_key_passphrase": self._safe_get(client, "snowflake-key-passphrase"),
-                "account": self._safe_get(client, "snowflake-secret-account"),
-                "role": self._safe_get(client, "snowflake-secret-role"),
+                "user": client.get_secret("snowflake-secret-user").value,
+                "private_key": client.get_secret("snowflake-private-key").value,
+                "private_key_passphrase": client.get_secret("snowflake-key-passphrase").value,
+                "account": client.get_secret("snowflake-secret-account").value,
+                "role": client.get_secret("snowflake-secret-role").value,
             },
         }
         logger.info("Credentials retrieved from Key Vault")
         return self._credentials
-
-    def _safe_get(self, client: SecretClient, secret_name: str) -> str:
-        try:
-            return client.get_secret(secret_name).value or ""
-        except Exception as exc:
-            logger.warning("Secret '{name}' not found in Key Vault: {error}", name=secret_name, error=exc)
-            return ""
 
     def get_snowflake_credentials(self) -> dict[str, str]:
         return self._get_all_credentials()["snowflake"]
 
     def get_snowflake_private_key_bytes(self) -> bytes:
         creds = self.get_snowflake_credentials()
-        pem = creds.get("private_key", "").replace("\\n", "\n")
-        if not pem:
-            raise ConfigurationError("Snowflake private key is missing in Key Vault.")
-
+        pem = creds["private_key"].replace("\\n", "\n")
         passphrase = creds.get("private_key_passphrase", "")
         passphrase_bytes = passphrase.encode("utf-8") if passphrase else None
 
-        try:
-            p_key = serialization.load_pem_private_key(
-                pem.encode("utf-8"),
-                password=passphrase_bytes,
-                backend=default_backend(),
-            )
-        except Exception as exc:
-            raise ConfigurationError(f"Failed to load private key: {str(exc)}") from exc
-
+        p_key = serialization.load_pem_private_key(
+            pem.encode("utf-8"),
+            password=passphrase_bytes,
+            backend=default_backend(),
+        )
         return p_key.private_bytes(
             encoding=serialization.Encoding.DER,
             format=serialization.PrivateFormat.PKCS8,
@@ -105,30 +93,22 @@ class CredentialManager:
         )
 
     def get_snowflake_connection(self) -> Any:
+        """Return a live Snowflake connection using Key Vault credentials."""
         if not self._initialized:
             self._initialize()
 
         sf_creds = self.get_snowflake_credentials()
         pk_bytes = self.get_snowflake_private_key_bytes()
-        sf_cfg = self._config.get("snowflake", {})
-
-        required = ["account", "user"]
-        missing = [k for k in required if not sf_creds.get(k)]
-        if missing:
-            raise ConfigurationError(f"Missing Key Vault secrets: {', '.join(missing)}")
+        sf_cfg = self._config["snowflake"]
 
         import snowflake.connector
 
-        connection = snowflake.connector.connect(
+        return snowflake.connector.connect(
             account=sf_creds["account"],
             user=f"{sf_creds['user']}@optum.com",
             private_key=pk_bytes,
-            role=sf_creds.get("role", ""),
-            database=sf_cfg.get("database", ""),
-            warehouse=sf_cfg.get("warehouse", ""),
-            schema=sf_cfg.get("schema", ""),
-            client_session_keep_alive=True,
+            role=sf_creds.get("role") or sf_cfg.get("role", ""),
+            database=sf_cfg["database"],
+            warehouse=sf_cfg["warehouse"],
+            schema=sf_cfg["schema"],
         )
-
-        logger.info("Snowflake connection established via Key Vault credentials.")
-        return connection

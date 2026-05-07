@@ -9,9 +9,9 @@ key_vault:
 
 # ---- Snowflake Connection ----
 snowflake:
-  database: "database-name"
+  database: "CDW_PRD_CALL_DB"
   warehouse: "your-warehouse"
-  schema: "schema-name"
+  schema: "CDW_COVE_RPT_SC"
   role: ""            # loaded from Key Vault if blank
 
 # ---- Paths (relative to project root) ----
