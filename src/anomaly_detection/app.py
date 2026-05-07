@@ -35,7 +35,7 @@ async def lifespan(application: FastAPI):
 
     package_root = Path(__file__).resolve().parent.parent
     queries_dir = state.config.queries_dir() or "queries"
-    query_file = state.config.query_file() or "filename.sql"
+    query_file = state.config.query_file() or "query.sql"
     state.query_loader = SQLQueryLoader(package_root / queries_dir / query_file)
 
     try:

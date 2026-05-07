@@ -1,5 +1,5 @@
 -- ==============================================================================
--- filename.sql — Base Issue Volume Query
+-- query.sql — Base Issue Volume Query
 -- ==============================================================================
 -- One base query.  DataService aggregates it in-memory per detection level.
 -- ==============================================================================

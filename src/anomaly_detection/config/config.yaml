@@ -24,7 +24,7 @@ paths:
 
 # ---- SQL Query File & Key ----
 # The .sql file holds one base query marked with -- @query base
-query_file: "filename.sql"
+query_file: "query.sql"
 query_key: "base"
 
 # ---- Detection Levels ----

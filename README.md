@@ -37,7 +37,7 @@ anomaly-detection-app/
 │       └── config/
 │           └── config.yaml       Detection levels + paths
 ├── queries/
-│   └── filename.sql            Named SQL queries (-- @query markers)
+│   └── query.sql            Named SQL queries (-- @query markers)
 ├── pyproject.toml
 ├── Dockerfile
 ├── docker-compose.yml
@@ -98,7 +98,7 @@ snowflake:
 paths:
   queries_dir: "queries"
 
-query_file: "filename.sql"
+query_file: "query.sql"
 
 detection_levels:
   by_client:
